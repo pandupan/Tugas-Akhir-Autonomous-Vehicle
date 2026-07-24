@@ -17,6 +17,7 @@ frame diteruskan ke detector.
 - Inferensi video lokal atau simulasi video jalan KITTI.
 - Pilihan model YOLOv12 baseline dan YOLOv12 + SKNet.
 - Mode HVI-CIDNet `off`, `auto`, atau `on`.
+- Mode HVI `auto` aktif hanya ketika skor brightness frame kurang dari `50`.
 - Respons inferensi seluruhnya di memori tanpa menyimpan frame hasil.
 - Overlay demo untuk jarak, batas jalan, stir, dan garis tengah objek.
 
@@ -68,6 +69,10 @@ backend/weights/baseline_best.pt
 backend/weights/sknet_best.pt
 backend/weights/generalization.pth
 ```
+
+Upload video melalui browser paling aman menggunakan container MP4 dengan codec
+H.264/AVC dan format piksel `yuv420p`. Ekstensi `.mp4` saja tidak menjamin
+kompatibilitas apabila stream di dalamnya masih memakai MPEG-4 Part 2 (`mp4v`).
 
 ## Setup
 

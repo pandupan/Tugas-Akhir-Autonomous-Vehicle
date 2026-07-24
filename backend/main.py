@@ -15,6 +15,7 @@ from app.yolo_service import KITTI_CLASS_NAMES, YoloService
 
 
 KITTI_DEMO_VIDEO_URL = "https://ultralytics.com/assets/kitti-inference-vid.mp4"
+HVI_AUTO_BRIGHTNESS_THRESHOLD = 50.0
 
 
 app = FastAPI(
@@ -88,7 +89,9 @@ def _resolve_hvi_mode(hvi_mode: str, use_hvi: bool, brightness: float) -> tuple[
     if normalized not in {"off", "auto", "on"}:
         raise HTTPException(status_code=400, detail="hvi_mode must be 'off', 'auto', or 'on'")
 
-    active = normalized == "on" or (normalized == "auto" and brightness < 82.0)
+    active = normalized == "on" or (
+        normalized == "auto" and brightness < HVI_AUTO_BRIGHTNESS_THRESHOLD
+    )
     if active and not _hvi_available():
         raise HTTPException(status_code=503, detail="HVI-CIDNet is requested but model weight or repo path is not available.")
     return normalized, active
@@ -104,6 +107,7 @@ def health() -> dict:
             for key, path in settings.model_paths()
         },
         "hvi_repo_exists": settings.hvi_repo_dir.exists(),
+        "hvi_auto_brightness_threshold": HVI_AUTO_BRIGHTNESS_THRESHOLD,
         "storage": "in-memory-frame-stream",
         "class_names": KITTI_CLASS_NAMES,
         "demo_video_url": KITTI_DEMO_VIDEO_URL,

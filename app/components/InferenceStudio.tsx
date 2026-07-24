@@ -12,7 +12,6 @@ import {
   Pause,
   Play,
   Radar,
-  Server,
   UploadCloud,
   Video,
   Wand2,
@@ -24,7 +23,6 @@ type HealthResponse = {
   status: string;
   models?: Record<string, { exists: boolean; path: string }>;
   hvi_repo_exists?: boolean;
-  storage?: string;
   class_names?: Record<string, string>;
   demo_video_url?: string;
 };
@@ -175,6 +173,8 @@ export default function InferenceStudio() {
   const requestAbortRef = useRef<AbortController | null>(null);
   const streamingRef = useRef(false);
   const lastProcessedAtRef = useRef(0);
+  const fpsDurationMsRef = useRef(0);
+  const fpsSampleCountRef = useRef(0);
 
   const [file, setFile] = useState<File | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
@@ -193,6 +193,8 @@ export default function InferenceStudio() {
   const [result, setResult] = useState<FrameResponse | null>(null);
   const [frameCount, setFrameCount] = useState(0);
   const [fps, setFps] = useState(0);
+  const [averageFps, setAverageFps] = useState(0);
+  const [videoEnded, setVideoEnded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -238,8 +240,12 @@ export default function InferenceStudio() {
     setResult(null);
     setFrameCount(0);
     setFps(0);
+    setAverageFps(0);
+    setVideoEnded(false);
     setError(null);
     lastProcessedAtRef.current = 0;
+    fpsDurationMsRef.current = 0;
+    fpsSampleCountRef.current = 0;
   }
 
   function handleFileChange(nextFile: File | null) {
@@ -440,6 +446,9 @@ export default function InferenceStudio() {
       }
       if (updateFps && elapsedSinceLast > 0) {
         setFps(1000 / elapsedSinceLast);
+        fpsDurationMsRef.current += elapsedSinceLast;
+        fpsSampleCountRef.current += 1;
+        setAverageFps((fpsSampleCountRef.current * 1000) / fpsDurationMsRef.current);
       }
 
       setResult(payload as FrameResponse);
@@ -488,7 +497,11 @@ export default function InferenceStudio() {
     const video = videoRef.current;
     if (!video) return;
 
+    if (videoEnded) {
+      resetOutput();
+    }
     setError(null);
+    setVideoEnded(false);
     setStreaming(true);
     setWarmingUp(true);
     setResult(null);
@@ -510,6 +523,16 @@ export default function InferenceStudio() {
   function handleVideoPlay() {
     if (!sourceUrl || streamingRef.current) return;
     void startRealtime();
+  }
+
+  function handleVideoEnded() {
+    stopRealtime();
+    setVideoEnded(true);
+  }
+
+  function handleVideoError() {
+    stopRealtime();
+    setError('Codec video tidak didukung browser. Gunakan MP4 dengan video H.264/AVC dan format piksel yuv420p.');
   }
 
   const modelLabel = modelKey === 'sknet' ? 'YOLOv12n + SKNet' : 'YOLOv12n Baseline';
@@ -627,8 +650,8 @@ export default function InferenceStudio() {
                 <div className="max-w-sm rounded-2xl border border-blue-100 bg-white p-6 text-center shadow-2xl shadow-blue-100/60">
                   <Loader2 className="mx-auto mb-4 animate-spin text-blue-600" size={34} />
                   <p className="text-sm font-black uppercase tracking-[0.16em] text-blue-600">Preloader</p>
-                  <p className="mt-2 text-xl font-black text-slate-800">Menyiapkan frame pertama</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">Model dipanaskan dulu agar video input dan hasil deteksi mulai terlihat bersamaan.</p>
+                  <p className="mt-2 text-xl font-black text-slate-800">Melakukan load model ke GPU</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">Backend sedang memuat weight model ke memori GPU sebelum memproses frame pertama.</p>
                 </div>
               </div>
             )}
@@ -643,12 +666,12 @@ export default function InferenceStudio() {
                       controls
                       muted
                       playsInline
-                      loop={sourceKind === 'demo'}
                       crossOrigin="anonymous"
                       className="h-full w-full bg-slate-950 object-contain"
                       onPlay={handleVideoPlay}
                       onPause={stopRealtime}
-                      onEnded={stopRealtime}
+                      onEnded={handleVideoEnded}
+                      onError={handleVideoError}
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-slate-950 px-6 text-center text-sm font-bold text-slate-500">
@@ -679,7 +702,9 @@ export default function InferenceStudio() {
                   )}
 
                   <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-emerald-400/90 px-3 py-1.5 text-xs font-black text-slate-950">{formatFps(fps)} FPS</span>
+                    <span className="rounded-full bg-emerald-400/90 px-3 py-1.5 text-xs font-black text-slate-950">
+                      {videoEnded ? `Rata-rata ${formatFps(averageFps)} FPS` : `${formatFps(fps)} FPS`}
+                    </span>
                     <span className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-black text-slate-800">{result ? `${result.latency_ms} ms` : 'idle'}</span>
                   </div>
 
@@ -718,7 +743,7 @@ export default function InferenceStudio() {
               { label: 'Frame', value: frameCount, icon: Camera },
               { label: 'Deteksi', value: result?.detections_total ?? 0, icon: Radar },
               { label: 'Brightness', value: result ? result.brightness.toFixed(1) : '-', icon: Moon },
-              { label: 'Storage', value: health?.storage ? 'In-memory' : '-', icon: Server },
+              { label: 'Rata-rata FPS', value: `${formatFps(averageFps)} FPS`, icon: CircleGauge },
             ].map((metric) => {
               const Icon = metric.icon;
               return (
